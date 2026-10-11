@@ -177,6 +177,8 @@ ul { list-style: none; padding: 0; }
 .hero__pause:active { transform: scale(.94); }
 @media (hover: hover) and (pointer: fine) { .hero__pause:hover { opacity: .7; } }
 .hero__sp { z-index: 4; }
+/* phones: the second sparkle sits beside the blue model's head instead of on her jacket */
+@media (max-width: 759px) { .hero__sp + .hero__sp { top: 38% !important; right: 8% !important; } }
 
 /* ---------- section heads, wrap ---------- */
 .wrap { max-width: var(--maxw); margin-inline: auto; padding-inline: var(--pad); }
