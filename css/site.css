@@ -70,7 +70,7 @@ ul { list-style: none; padding: 0; }
 .main { position: relative; background: var(--paper); overflow-x: clip; }
 
 .grain {
-  position: fixed; inset: -50%; z-index: var(--z-grain); pointer-events: none;
+  position: fixed; inset: -10%; z-index: var(--z-grain); pointer-events: none; will-change: transform; /* 1.2x the viewport (it was 4x): the drift is at most 6% of the layer, inside the 10% bleed */
   background: url("../img/grain.png") 0 0 / 200px 200px;
   opacity: .3;
   animation: sp-grain 1s steps(6) infinite;
@@ -96,6 +96,13 @@ ul { list-style: none; padding: 0; }
 .sigpen svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .sigpen__static { fill: currentColor; }
 .sigpen.is-live .sigpen__static { display: none; }
+/* the finished chrome signature (hero): the texture slides behind a static glyph mask, a pure transform. The SVG highlight it replaces
+   re-rendered the whole 2.6 MP masked signature on the CPU for every update, which was the scroll lag in Safari. The mask sits on the
+   inner element so the glitch's drop-shadow (on the wrapper) is not clipped by it. */
+.sigchrome { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .28s linear; }
+.sigchrome.is-on { opacity: 1; }
+.sigchrome__m { position: absolute; inset: 0; overflow: hidden; -webkit-mask: url("../img/sig-glyph.svg") 0 0 / 100% 100% no-repeat; mask: url("../img/sig-glyph.svg") 0 0 / 100% 100% no-repeat; }
+.sigchrome__m img { position: absolute; left: 0; top: 0; width: 170%; height: 100%; max-width: none; will-change: transform; }
 .sig__star { position: absolute; left: 77.2%; top: 18.8%; width: 7.95%; aspect-ratio: 700 / 380; height: auto; fill: currentColor; transform-origin: 56% 50%; }
 .js:not(.ready) .ft__star { opacity: 0; }
 /* Start states for GSAP-owned elements use opacity/clip-path only. A start TRANSFORM here is parsed by GSAP
@@ -201,7 +208,7 @@ ul { list-style: none; padding: 0; }
   70% { filter: drop-shadow(2px 0 0 rgb(255 255 255 / .85)) drop-shadow(-2px 0 0 rgb(10 10 10 / .85)); }
 }
 @media (hover: hover) and (pointer: fine) { .hdr__logo:hover .logo { animation: sp-glitch .36s steps(1, end); } }
-.hero__sig.is-glitch svg { animation: sp-glitch .42s steps(1, end); }
+.hero__sig.is-glitch svg, .hero__sig.is-glitch .sigchrome { animation: sp-glitch .42s steps(1, end); }
 
 /* ---------- rails + cards: clean cut-outs on flat paper, hairline floor ---------- */
 .rail-wrap { position: relative; }

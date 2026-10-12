@@ -18,6 +18,7 @@
   let userPaused = false;
   let sheenTw = null;
   let sheenState = null;
+  let scrollBusyUntil = 0; /* performance.now() until which the page counts as being scrolled */
   let sheenApply = null;
   let heroEntrance = null;
   let marqueeInView = false;
@@ -271,6 +272,27 @@
     if (mode === 'chrome') sheen = mk('image', { href: 'img/chrome-smooth.webp', x: vx, y: vy, width: vw * 1.7, height: vh, preserveAspectRatio: 'none', mask: `url(#pg${id})` }, body);
     else mk('use', { href: '#sp-body', x: vx, y: vy, width: vw, height: vh, fill: 'currentColor' }, body);
     const star = mk('use', { href: '#sp-star', width: 170, height: 92, fill: 'currentColor', opacity: 0 }, svg);
+    /* chrome only: once the pen has finished, the texture moves to a plain layer behind a static CSS mask of the glyphs, so the highlight is a
+       transform (GPU) and not a repaint of the masked SVG. Without CSS mask support the SVG keeps doing it. */
+    const canSettle = mode === 'chrome' && !!(window.CSS && CSS.supports && (CSS.supports('mask-image', 'url(x.svg)') || CSS.supports('-webkit-mask-image', 'url(x.svg)')));
+    let layer = null; let layerImg = null; let settled = false; let offNow = 0;
+    if (canSettle) {
+      layer = document.createElement('div'); layer.className = 'sigchrome'; layer.setAttribute('aria-hidden', 'true');
+      const m = document.createElement('div'); m.className = 'sigchrome__m';
+      layerImg = new Image(); layerImg.alt = ''; layerImg.decoding = 'async'; layerImg.src = 'img/chrome-smooth.webp';
+      m.appendChild(layerImg); layer.appendChild(m);
+    }
+    function setSheen(off) {
+      offNow = off;
+      if (settled) layerImg.style.transform = `translate3d(${(-off / (vw * 1.7) * 100).toFixed(3)}%,0,0)`;
+      else if (sheen) sheen.setAttribute('x', vx - off);
+    }
+    function settle() {
+      if (!layer || settled) return;
+      settled = true; setSheen(offNow);
+      layer.classList.add('is-on');
+      setTimeout(() => { body.style.display = 'none'; }, 340);
+    }
     const cum = []; let total = 0;
     lens.forEach((l) => { cum.push(total); total += l; });
     const last = paths[paths.length - 1];
@@ -302,12 +324,14 @@
       star.setAttribute('x', cx - w / 2); star.setAttribute('y', cy - h / 2);
       star.setAttribute('width', w); star.setAttribute('height', h);
       star.setAttribute('opacity', 1);
+      if (p >= 0.999) settle();
     }
     set(0);
     host.classList.add('is-live');
     const ov = host.querySelector('.sig__star'); if (ov) ov.remove();
     host.appendChild(svg);
-    return { set, sheen, vx };
+    if (layer) host.insertBefore(layer, svg); /* under the SVG, so the landing star stays on top */
+    return { set, sheen, vx, setSheen, get settled() { return settled; } };
   }
 
   /* ------------------------------------------------------------------ motion */
@@ -331,6 +355,8 @@
     const hdr = $('#hdr');
     const hero = $('.hero');
     const heroSig = $('.hero__sig');
+    let heroActive = true; /* the hero is on screen */
+    ScrollTrigger.create({ trigger: hero, start: 'top bottom', end: 'bottom top', onToggle: (st) => { heroActive = st.isActive; if (st.isActive && sheenApply) sheenApply(); } });
 
     gsap.set(heroSig, { yPercent: 0 });
 
@@ -339,7 +365,7 @@
     ScrollTrigger.create({ trigger: hero, start: () => `bottom ${hdr.offsetHeight}px`, end: 'max', onUpdate: syncHeader, onRefresh: syncHeader });
     ScrollTrigger.create({
       start: 0, end: 'max',
-      onUpdate: (s) => hdr.classList.toggle('is-hidden', s.direction === 1 && s.scroll() > 700 && !root.classList.contains('menu-open')),
+      onUpdate: (s) => { scrollBusyUntil = performance.now() + 200; hdr.classList.toggle('is-hidden', s.direction === 1 && s.scroll() > 700 && !root.classList.contains('menu-open')); },
     });
 
     /* hero: the pen writes the chrome signature while the model rises in front of it. Starts as the curtain lifts. */
@@ -351,10 +377,20 @@
       .fromTo('.hero__lab span', { yPercent: 120, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, stagger: 0.08 }, 1.2)
       .fromTo('.hdr__in > *', { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, stagger: 0.06 }, 1.1);
 
-    /* the highlight slides through the chrome: slowly on its own, and further as you scroll */
-    if (penHero && penHero.sheen) {
+    /* the highlight slides through the chrome: slowly on its own, and further as you scroll.
+       Once the pen has finished it is a transform on a plain layer (see mountPen). Until then, and without CSS mask support, it is an SVG
+       attribute that WebKit repaints on the CPU for every change, so that path is rate-capped (8 a second still, 20 while scrolling) and
+       always lands on the exact final value. Both paths skip work while the hero is off screen. */
+    if (penHero && penHero.setSheen) {
       const sh = { idle: 0, scroll: 0, ptr: 0 };
-      const apply = () => penHero.sheen.setAttribute('x', penHero.vx - sh.idle - sh.scroll - sh.ptr);
+      let lastPaint = 0, pending = 0;
+      const paint = () => { pending = 0; lastPaint = performance.now(); penHero.setSheen(sh.idle + sh.scroll + sh.ptr); };
+      const apply = () => {
+        if (penHero.settled) { if (heroActive) paint(); return; }
+        if (!heroActive && !pending) return;
+        const gap = performance.now() < scrollBusyUntil ? 48 : 120, wait = gap - (performance.now() - lastPaint);
+        if (wait <= 0) paint(); else if (!pending) pending = setTimeout(paint, wait);
+      };
       sheenState = sh; sheenApply = apply;
       sheenTw = gsap.to(sh, { idle: 760, duration: 13, ease: 'sine.inOut', yoyo: true, repeat: -1, onUpdate: apply });
       gsap.to(sh, { scroll: 820, ease: 'none', scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true }, onUpdate: apply });
@@ -451,11 +487,9 @@
 
     /* every so often the hero signature glitches for under half a second (mono ghosts, no colour) */
     const heroSigEl = $('.hero__sig');
-    let heroActive = true;
-    ScrollTrigger.create({ trigger: hero, start: 'top bottom', end: 'bottom top', onToggle: (s) => { heroActive = s.isActive; } });
     if (heroSigEl) {
       const glitch = () => {
-        if (heroActive && !userPaused && !document.hidden) {
+        if (heroActive && !userPaused && !document.hidden && performance.now() > scrollBusyUntil) {
           heroSigEl.classList.add('is-glitch');
           setTimeout(() => heroSigEl.classList.remove('is-glitch'), 460);
         }
