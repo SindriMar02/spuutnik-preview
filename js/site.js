@@ -274,138 +274,27 @@
     }
   }
 
-  /* ------------------------------------------------------------------ the pen */
-  /* Their real signature is written by a pen. js/sig-strokes.js (tools/trace_strokes.py) holds the centre-line of
-     the letterforms in writing order; each chunk is a fat stroke inside an SVG <mask> over the filled signature, so
-     the true shapes appear exactly where the pen has been. The hero version is filled with liquid chrome and a
-     highlight slides through it. A star rides the pen tip and lands as the logo's own star. */
+  /* ------------------------------------------------------------------ the signature */
+  /* Their real signature, revealed by one calm wipe. The glyph is a CSS mask over a plain layer: liquid chrome on the hero
+     (the texture slides behind the mask, a pure transform, so the highlight never repaints the glyph), solid ink in the
+     footer. The star is their own star, placed where it sits in the logo, and arrives as the wipe ends. No pen, no strokes. */
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const STAR_END = { x: 2118, y: 336, w: 210, h: 114 }; /* where their star sits in the 2853x1524 logo space */
-  let penId = 0;
-  const mk = (name, attrs, parent) => {
-    const n = document.createElementNS(SVGNS, name);
-    Object.keys(attrs).forEach((k) => n.setAttribute(k, attrs[k]));
-    if (parent) parent.appendChild(n);
-    return n;
-  };
-  function mountPen(host, mode) {
-    const data = window.SIG_STROKES;
-    if (!data || !host) return null;
-    const [vx, vy, vw, vh] = data.viewBox;
-    const id = ++penId;
-    const svg = mk('svg', { class: 'sigpen__fx', viewBox: `${vx} ${vy} ${vw} ${vh}`, 'aria-hidden': 'true' });
-    const defs = mk('defs', {}, svg);
-    const area = { maskUnits: 'userSpaceOnUse', x: vx, y: vy, width: vw, height: vh };
-    const mGlyph = mk('mask', Object.assign({ id: `pg${id}` }, area), defs);
-    mk('use', { href: '#sp-body', x: vx, y: vy, width: vw, height: vh, fill: '#fff' }, mGlyph);
-    const mPen = mk('mask', Object.assign({ id: `pp${id}` }, area), defs);
-    const strokes = mk('g', { fill: 'none', stroke: '#fff', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, mPen);
-    const lens = data.chunks.map((c) => c.len);
-    const paths = data.chunks.map((c) => {
-      const pth = mk('path', { d: c.d, 'stroke-width': c.w }, strokes);
-      /* gap longer than the chunk plus a cap: with gap == len the NEXT dash starts exactly at the chunk's end and its
-         round cap paints a dot there before the pen has arrived (a dotted ghost of the whole word) */
-      pth.style.strokeDasharray = `${c.len} ${c.len + c.w + 8}`;
-      pth.style.strokeDashoffset = c.len;
-      return pth;
-    });
-    const body = mk('g', { mask: `url(#pp${id})` }, svg);
-    let sheen = null;
-    if (mode === 'chrome') sheen = mk('image', { href: 'img/chrome-smooth.webp', x: vx, y: vy, width: vw * 1.7, height: vh, preserveAspectRatio: 'none', mask: `url(#pg${id})` }, body);
-    else mk('use', { href: '#sp-body', x: vx, y: vy, width: vw, height: vh, fill: 'currentColor' }, body);
-    const star = mk('use', { href: '#sp-star', width: 170, height: 92, fill: 'currentColor', opacity: 0 }, svg);
-    /* chrome only: once the pen has finished, the texture moves to a plain layer behind a static CSS mask of the glyphs, so the highlight is a
-       transform (GPU) and not a repaint of the masked SVG. Without CSS mask support the SVG keeps doing it. */
-    const canSettle = mode === 'chrome' && !!(window.CSS && CSS.supports && (CSS.supports('mask-image', 'url(x.svg)') || CSS.supports('-webkit-mask-image', 'url(x.svg)')));
-    let layer = null; let layerImg = null; let settled = false; let offNow = 0;
-    if (canSettle) {
-      layer = document.createElement('div'); layer.className = 'sigchrome'; layer.setAttribute('aria-hidden', 'true');
-      const m = document.createElement('div'); m.className = 'sigchrome__m';
-      layerImg = new Image(); layerImg.alt = ''; layerImg.decoding = 'async'; layerImg.src = 'img/chrome-smooth.webp';
-      m.appendChild(layerImg); layer.appendChild(m);
-    }
-    function setSheen(off) {
-      offNow = off;
-      if (settled) layerImg.style.transform = `translate3d(${(-off / (vw * 1.7) * 100).toFixed(3)}%,0,0)`;
-      else if (sheen) sheen.setAttribute('x', vx - off);
-    }
-    function settle() {
-      if (!layer || settled) return;
-      settled = true; setSheen(offNow);
-      layer.classList.add('is-on');
-      setTimeout(() => { body.style.display = 'none'; }, 340);
-    }
-    const cum = []; let total = 0;
-    lens.forEach((l) => { cum.push(total); total += l; });
-    const last = paths[paths.length - 1];
-    const lastPt = last.getPointAtLength(last.getTotalLength());
-    const ease = (t) => t * t * (3 - 2 * t);
-    /* The pen writes stroke by stroke (data.strokes = index ranges in writing order). Between two strokes it LIFTS: the
-       star travels the gap on a shallow arc in a time proportional to the distance, instead of teleporting. The
-       schedule below maps progress 0..1 onto [draw S][lift][draw p][lift]... in ink length units. */
-    const order = (data.strokes && data.strokes.length ? data.strokes : [{ from: 0, to: paths.length }]).filter((s) => s.to > s.from);
-    const sched = []; let span = 0;
-    order.forEach((s, i) => {
-      const len = cum[s.to - 1] + lens[s.to - 1] - cum[s.from];
-      sched.push({ kind: 'draw', s, at: span, len }); span += len;
-      if (i < order.length - 1) {
-        const a = paths[s.to - 1].getPointAtLength(paths[s.to - 1].getTotalLength());
-        const n = order[i + 1]; const b = paths[n.from].getPointAtLength(0);
-        const d = Math.hypot(b.x - a.x, b.y - a.y);
-        const lift = Math.min(d * 0.55, 420);
-        sched.push({ kind: 'lift', a, b, at: span, len: lift, ink: cum[s.to - 1] + lens[s.to - 1] }); span += lift;
-      }
-    });
-    let head = 0;
-    function fill(drawn) { /* drawn = ink length already on the page, over the flat chunk list */
-      let lo = 0; let hi = cum.length - 1;
-      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (cum[mid] <= drawn) lo = mid; else hi = mid - 1; }
-      for (let i = Math.max(0, Math.min(head, lo) - 1); i <= Math.min(paths.length - 1, Math.max(head, lo) + 1); i++) {
-        const local = Math.max(0, Math.min(1, (drawn - cum[i]) / lens[i]));
-        paths[i].style.strokeDashoffset = lens[i] * (1 - local);
-      }
-      head = lo;
-      const f = Math.max(0, Math.min(1, (drawn - cum[lo]) / lens[lo]));
-      return paths[lo].getPointAtLength(f * paths[lo].getTotalLength());
-    }
-    const END = 0.955; /* the writing fits in [0, END]; after that everything is drawn and the star flies home */
-    function set(p) {
-      p = Math.max(0, Math.min(1, p));
-      const t = Math.min(p, END) / END * span;
-      let k = 0;
-      while (k < sched.length - 1 && sched[k + 1].at <= t) k++;
-      const seg = sched[k];
-      let cx; let cy;
-      if (seg.kind === 'draw') {
-        const local = seg.len ? Math.min(1, (t - seg.at) / seg.len) : 1;
-        const pt = fill(cum[seg.s.from] + local * seg.len);
-        cx = pt.x; cy = pt.y;
-      } else {
-        const u = ease(Math.min(1, (t - seg.at) / seg.len));
-        fill(seg.ink); /* the finished stroke stays full while the pen is in the air */
-        cx = seg.a.x + (seg.b.x - seg.a.x) * u;
-        cy = seg.a.y + (seg.b.y - seg.a.y) * u - Math.sin(u * Math.PI) * Math.min(60, seg.len * 0.25); /* the lift */
-      }
-      if (p <= 0) { star.setAttribute('opacity', 0); return; }
-      let w = 170;
-      if (p > END) { /* the pen lifts and the star settles into its place above the k */
-        const u = ease((p - END) / (1 - END));
-        cx = lastPt.x + (STAR_END.x + STAR_END.w / 2 - lastPt.x) * u;
-        cy = lastPt.y + (STAR_END.y + STAR_END.h / 2 - lastPt.y) * u;
-        w = 170 + (STAR_END.w - 170) * u;
-      }
-      const h = w * 0.543;
-      star.setAttribute('x', cx - w / 2); star.setAttribute('y', cy - h / 2);
-      star.setAttribute('width', w); star.setAttribute('height', h);
-      star.setAttribute('opacity', 1);
-      if (p >= 0.999) settle();
-    }
-    set(0);
-    host.classList.add('is-live');
-    const ov = host.querySelector('.sig__star'); if (ov) ov.remove();
-    host.appendChild(svg);
-    if (layer) host.insertBefore(layer, svg); /* under the SVG, so the landing star stays on top */
-    return { set, sheen, vx, setSheen, get settled() { return settled; } };
+  function mountSig(host, mode) {
+    if (!host) return null;
+    const canMask = !!(window.CSS && CSS.supports && (CSS.supports('mask-image', 'url(x.svg)') || CSS.supports('-webkit-mask-image', 'url(x.svg)')));
+    if (!canMask) return null; /* the static signature stays */
+    const layer = document.createElement('div'); layer.className = 'sigchrome'; layer.setAttribute('aria-hidden', 'true');
+    const m = document.createElement('div'); m.className = 'sigchrome__m';
+    let img = null;
+    if (mode === 'chrome') { img = new Image(); img.alt = ''; img.decoding = 'async'; img.src = 'img/chrome-smooth.webp'; m.appendChild(img); }
+    else m.classList.add('sigchrome__m--ink');
+    layer.appendChild(m);
+    const star = document.createElementNS(SVGNS, 'svg'); star.setAttribute('class', 'sig__star'); star.setAttribute('aria-hidden', 'true');
+    const use = document.createElementNS(SVGNS, 'use'); use.setAttribute('href', '#sp-star'); star.appendChild(use);
+    host.classList.add('is-live'); host.appendChild(layer); host.appendChild(star);
+    const W = 2640 * 1.7; /* the texture is 170% of the glyph box wide */
+    function setSheen(off) { if (img) img.style.transform = `translate3d(${(-off / W * 100).toFixed(3)}%,0,0)`; }
+    return { layer, star, setSheen };
   }
 
   /* ------------------------------------------------------------------ motion */
@@ -442,34 +331,32 @@
       onUpdate: (s) => { scrollBusyUntil = performance.now() + 200; hdr.classList.toggle('is-hidden', s.direction === 1 && s.scroll() > 700 && !root.classList.contains('menu-open')); },
     });
 
-    /* hero: the pen writes the chrome signature while the model rises in front of it. Starts as the curtain lifts. */
-    const penHero = mountPen(heroSig, 'chrome');
-    const wr = { p: 0 };
+    /* hero: one wipe reveals the chrome signature, left to right, as the curtain lifts; the highlight sweeps with it and the
+       star arrives as the wipe ends. The models rise in front of it. */
+    const sig = mountSig(heroSig, 'chrome');
+    const sh = { idle: 0, scroll: 0, ptr: 0, intro: 0 };
+    const paint = () => { if (sig && heroActive) sig.setSheen(sh.idle + sh.scroll + sh.ptr + sh.intro); };
+    sheenState = sh; sheenApply = paint;
     const tl = gsap.timeline({ delay: 1.3, defaults: { ease: 'expo.out' } });
-    if (penHero) heroEntrance = gsap.to(wr, { delay: 1.3, p: 1, duration: 3.8, ease: 'power1.inOut', onUpdate: () => penHero.set(wr.p) });
-    tl.fromTo('.hero__fig img', { yPercent: 14, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.6, stagger: 0.22 }, 0.7)
-      .fromTo('.hero__lab span', { yPercent: 120, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, stagger: 0.08 }, 1.2)
-      .fromTo('.hdr__in > *', { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, stagger: 0.06 }, 1.1)
-      /* the one invitation: after the star has landed (pen = 1.3s delay + 3.8s), under the right label */
-      .fromTo('.hero__new', { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9 }, 5.3);
+    if (sig) {
+      gsap.set(sig.layer, { clipPath: 'inset(0% 100% 0% 0%)' });
+      gsap.set(sig.star, { opacity: 0, scale: 0.5, transformOrigin: '50% 50%' });
+      tl.to(sig.layer, { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.25, ease: 'power3.inOut' }, 0)
+        .fromTo(sh, { intro: 1100 }, { intro: 0, duration: 1.6, ease: 'power2.out', onUpdate: paint }, 0)
+        .to(sig.star, { opacity: 1, scale: 1, duration: 0.6 }, 1.1);
+      heroEntrance = tl;
+    }
+    tl.fromTo('.hero__fig img', { yPercent: 14, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.6, stagger: 0.22 }, 0.5)
+      .fromTo('.hero__lab span', { yPercent: 120, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, stagger: 0.08 }, 1.0)
+      .fromTo('.hdr__in > *', { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, stagger: 0.06 }, 0.9)
+      /* the one invitation, after the star has arrived */
+      .fromTo('.hero__new', { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9 }, 2.2);
 
-    /* the highlight slides through the chrome: slowly on its own, and further as you scroll.
-       Once the pen has finished it is a transform on a plain layer (see mountPen). Until then, and without CSS mask support, it is an SVG
-       attribute that WebKit repaints on the CPU for every change, so that path is rate-capped (8 a second still, 20 while scrolling) and
-       always lands on the exact final value. Both paths skip work while the hero is off screen. */
-    if (penHero && penHero.setSheen) {
-      const sh = { idle: 0, scroll: 0, ptr: 0 };
-      let lastPaint = 0, pending = 0;
-      const paint = () => { pending = 0; lastPaint = performance.now(); penHero.setSheen(sh.idle + sh.scroll + sh.ptr); };
-      const apply = () => {
-        if (penHero.settled) { if (heroActive) paint(); return; }
-        if (!heroActive && !pending) return;
-        const gap = performance.now() < scrollBusyUntil ? 48 : 120, wait = gap - (performance.now() - lastPaint);
-        if (wait <= 0) paint(); else if (!pending) pending = setTimeout(paint, wait);
-      };
-      sheenState = sh; sheenApply = apply;
-      sheenTw = gsap.to(sh, { idle: 760, duration: 13, ease: 'sine.inOut', yoyo: true, repeat: -1, onUpdate: apply });
-      gsap.to(sh, { scroll: 820, ease: 'none', scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true }, onUpdate: apply });
+    /* the highlight slides through the chrome: slowly on its own, further as you scroll, and with the pointer (below).
+       A transform on a plain layer, so it costs nothing; skipped while the hero is off screen. */
+    if (sig) {
+      sheenTw = gsap.to(sh, { idle: 760, duration: 13, ease: 'sine.inOut', yoyo: true, repeat: -1, onUpdate: paint });
+      gsap.to(sh, { scroll: 820, ease: 'none', scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true }, onUpdate: paint });
     }
 
     /* depth: the models (near) rise faster than the signature (far) as the hero leaves; the one standing further back rises less */
@@ -517,7 +404,9 @@
         if (sheenState) { sheenState.ptr = orb.v * 260; sheenApply(); }
       });
     }
-    gsap.to(heroSig, { yPercent: -3, scale: 0.97, ease: 'none', scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true } });
+    /* the wordmark follows the page: as the hero leaves it sinks down behind the models (slower than the page, a little
+       smaller), the way the Hotel Laugar name sinks behind the land */
+    gsap.to(heroSig, { yPercent: 46, scale: 0.9, ease: 'none', scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true } });
 
     /* shutter reveals: tied to position over a short band, never to a clock */
     $$('[data-shutter]').forEach((el) => {
@@ -531,16 +420,16 @@
       gsap.fromTo($$('.ln > span', h), { yPercent: 115 }, { yPercent: 0, ease: 'none', stagger: 0.14, scrollTrigger: { trigger: h, start: 'top 94%', end: cl('top 66%'), scrub: 0.5 } });
     });
 
-    /* other signatures (footer): the same pen, ink instead of chrome. A pen writes at its own pace, so this one plays
-       once the signature is well inside the viewport (2.6s) and un-writes when you scroll back above it, instead of
-       being dragged by the scrollbar. */
+    /* the footer signature: the same wipe in ink, once the signature is in view; un-wiped at double speed when you scroll back above it */
     $$('[data-pen="ink"]').forEach((host) => {
-      const pen = mountPen(host, 'ink');
-      if (!pen) return;
-      const w = { p: 0 };
-      const write = gsap.to(w, { p: 1, duration: 2.6, ease: 'power1.inOut', paused: true, onUpdate: () => pen.set(w.p) });
-      /* un-writing is a system response, so it runs at twice the speed of the write */
-      ScrollTrigger.create({ trigger: host, start: 'top 82%', onEnter: () => write.timeScale(1).play(), onLeaveBack: () => write.timeScale(2).reverse() });
+      const fs = mountSig(host, 'ink');
+      if (!fs) return;
+      gsap.set(fs.layer, { clipPath: 'inset(0% 100% 0% 0%)' });
+      gsap.set(fs.star, { opacity: 0, scale: 0.5, transformOrigin: '50% 50%' });
+      const w = gsap.timeline({ paused: true })
+        .to(fs.layer, { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.25, ease: 'power3.inOut' }, 0)
+        .to(fs.star, { opacity: 1, scale: 1, duration: 0.6, ease: 'expo.out' }, 1.1);
+      ScrollTrigger.create({ trigger: host, start: 'top 82%', onEnter: () => w.timeScale(1).play(), onLeaveBack: () => w.timeScale(2).reverse() });
     });
 
     /* NEW: the two outlined lines fill in order */
@@ -564,19 +453,6 @@
     mm.add('(min-width: 760px)', () => {
       gsap.fromTo('.pair__line', { scaleX: 0 }, { scaleX: 1, ease: 'none', scrollTrigger: { trigger: '.pair__grid', start: 'top 60%', end: 'bottom 70%', scrub: 0.5 } });
     });
-
-    /* every so often the hero signature glitches for under half a second (mono ghosts, no colour) */
-    const heroSigEl = $('.hero__sig');
-    if (heroSigEl) {
-      const glitch = () => {
-        if (heroActive && !userPaused && !document.hidden && performance.now() > scrollBusyUntil) {
-          heroSigEl.classList.add('is-glitch');
-          setTimeout(() => heroSigEl.classList.remove('is-glitch'), 460);
-        }
-        setTimeout(glitch, 8000 + Math.random() * 5000);
-      };
-      setTimeout(glitch, 6500);
-    }
 
     /* the one marquee: speeds up with scroll velocity, sleeps off screen */
     const track = $('.strip__track');

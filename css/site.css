@@ -69,41 +69,30 @@ ul { list-style: none; padding: 0; }
 /* ---------- sheet, grain, curtain ---------- */
 .main { position: relative; background: var(--paper); overflow-x: clip; }
 
-.grain {
-  position: fixed; inset: -10%; z-index: var(--z-grain); pointer-events: none; will-change: transform; /* 1.2x the viewport (it was 4x): the drift is at most 6% of the layer, inside the 10% bleed */
-  background: url("../img/grain.png") 0 0 / 200px 200px;
-  opacity: .3;
-  animation: sp-grain 1s steps(6) infinite;
-}
-@keyframes sp-grain {
-  0% { transform: translate3d(0, 0, 0); } 17% { transform: translate3d(-4%, 3%, 0); } 33% { transform: translate3d(3%, -5%, 0); }
-  50% { transform: translate3d(-6%, -2%, 0); } 67% { transform: translate3d(5%, 4%, 0); } 83% { transform: translate3d(-2%, 6%, 0); } 100% { transform: translate3d(0, 0, 0); }
-}
-
 .curtain {
   position: fixed; inset: 0; z-index: var(--z-curtain); display: grid; place-items: center;
   background: var(--ink); pointer-events: none;
   animation: sp-curtain .9s var(--ease-io) 1.15s both;
 }
-.curtain::before { content: ""; position: absolute; inset: 0; background: url("../img/chrome-b.webp") center / cover; opacity: .32; }
-.curtain__star { position: relative; width: 68px; height: 37px; color: var(--cream); animation: sp-spin 1.3s linear infinite, sp-glitch .9s steps(1, end) infinite; }
+.curtain__star { position: relative; width: 68px; height: 37px; color: var(--cream); animation: sp-spin 1.3s linear infinite; }
 @keyframes sp-curtain { to { clip-path: inset(0 0 100% 0); visibility: hidden; } }
 @keyframes sp-spin { to { transform: rotate(360deg); } }
 
-/* ---------- signature (their hand-lettered logo): written by a pen, chrome on the hero ---------- */
+/* ---------- signature (their hand-lettered logo): one wipe, chrome on the hero, ink in the footer ---------- */
 .logo { width: 100%; height: auto; aspect-ratio: 2640 / 990; fill: currentColor; }
 .sigpen { position: relative; width: 100%; aspect-ratio: 2640 / 990; color: var(--paper); }
 .sigpen svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .sigpen__static { fill: currentColor; }
 .sigpen.is-live .sigpen__static { display: none; }
-/* the finished chrome signature (hero): the texture slides behind a static glyph mask, a pure transform. The SVG highlight it replaces
-   re-rendered the whole 2.6 MP masked signature on the CPU for every update, which was the scroll lag in Safari. The mask sits on the
-   inner element so the glitch's drop-shadow (on the wrapper) is not clipped by it. */
-.sigchrome { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .28s linear; }
-.sigchrome.is-on { opacity: 1; }
-.sigchrome__m { position: absolute; inset: 0; overflow: hidden; -webkit-mask: url("../img/sig-glyph.svg") 0 0 / 100% 100% no-repeat; mask: url("../img/sig-glyph.svg") 0 0 / 100% 100% no-repeat; }
+/* the glyph is a static CSS mask over a plain layer; the chrome texture slides behind it as a transform (never a repaint of the glyph) */
+.sigchrome { position: absolute; inset: 0; pointer-events: none; }
+/* inset 1px: at 1x DPR the mask's edge texel let a one-pixel row of the texture through along the box's top edge (measured 29 vs 10) */
+.sigchrome__m { position: absolute; inset: 1px; overflow: hidden; -webkit-mask: url("../img/sig-glyph.svg") 0 0 / 100% 100% no-repeat; mask: url("../img/sig-glyph.svg") 0 0 / 100% 100% no-repeat; }
 .sigchrome__m img { position: absolute; left: 0; top: 0; width: 170%; height: 100%; max-width: none; will-change: transform; }
-.sig__star { position: absolute; left: 77.2%; top: 18.8%; width: 7.95%; aspect-ratio: 700 / 380; height: auto; fill: currentColor; transform-origin: 56% 50%; }
+.sigchrome__m--ink { background: currentColor; }
+/* their star, where it sits in the logo (2118/336 of the 2853x1524 space); beats the full-size rule for .sigpen svg above */
+.sigpen svg.sig__star { position: absolute; inset: auto; left: 77.2%; top: 18.8%; width: 7.95%; aspect-ratio: 700 / 380; height: auto; fill: currentColor; transform-origin: 56% 50%; }
+.sig__star use { fill: currentColor; }
 .js:not(.ready) .ft__star { opacity: 0; }
 /* Start states for GSAP-owned elements use opacity/clip-path only. A start TRANSFORM here is parsed by GSAP
    as a real x/y and stays on top of the tween (found the hard way). */
@@ -186,7 +175,6 @@ ul { list-style: none; padding: 0; }
 /* ---------- mobile menu ---------- */
 .menu { position: fixed; inset: 0; z-index: var(--z-menu); display: flex; flex-direction: column; justify-content: space-between; padding: calc(96px + var(--safe-top)) var(--pad) calc(28px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--paper); overflow-y: auto; overscroll-behavior: contain; }
 .menu[hidden] { display: none; }
-.menu__bg { position: absolute; inset: 0; background: url("../img/chrome-b.webp") center / cover; opacity: .28; pointer-events: none; }
 .menu__nav, .menu__foot { position: relative; }
 .menu__nav a { display: block; font: 800 clamp(1.5rem, 8vw, 2.6rem)/1.08 var(--f-display); text-transform: uppercase; padding: 6px 0; }
 .menu .ln { display: block; overflow: clip; padding-block: .14em; margin-block: -.14em; }
@@ -194,8 +182,7 @@ ul { list-style: none; padding: 0; }
 .menu.is-in .ln > * { animation: sp-menu-in .8s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 55ms + 120ms); }
 @keyframes sp-menu-in { from { transform: translate3d(0, 110%, 0); } to { transform: none; } }
 .menu__foot { margin-top: 32px; opacity: .85; }
-.motion-paused .grain, .motion-paused .hero__fig, .motion-paused .spark,
-.motion-paused .hero__sig.is-glitch svg { animation-play-state: paused; }
+.motion-paused .hero__fig, .motion-paused .spark { animation-play-state: paused; }
 .menu__foot a { text-decoration: underline; text-underline-offset: 3px; }
 .menu-open .hdr { color: var(--paper); background: transparent; box-shadow: none; transform: translate3d(-50%, 0, 0); z-index: var(--z-menu-header); }
 
@@ -246,7 +233,6 @@ ul { list-style: none; padding: 0; }
   70% { filter: drop-shadow(2px 0 0 rgb(255 255 255 / .85)) drop-shadow(-2px 0 0 rgb(10 10 10 / .85)); }
 }
 @media (hover: hover) and (pointer: fine) { .hdr__logo:hover .logo { animation: sp-glitch .36s steps(1, end); } }
-.hero__sig.is-glitch svg, .hero__sig.is-glitch .sigchrome { animation: sp-glitch .42s steps(1, end); }
 
 /* ---------- rails + cards: clean cut-outs on flat paper, hairline floor ---------- */
 .rail-wrap { position: relative; }
@@ -372,9 +358,9 @@ ul { list-style: none; padding: 0; }
 .box__ix { position: absolute; left: 14px; bottom: 14px; }
 .box__n { display: block; margin-bottom: 10px; font: 800 clamp(.62rem, 3.1vw, .75rem)/1.2 var(--f-display); letter-spacing: 0; overflow-wrap: normal; }
 .box__star { position: absolute; right: 14px; bottom: 14px; width: 40px; aspect-ratio: 700 / 380; height: auto; fill: currentColor; transform-origin: 100% 100%; transition: transform .7s var(--ease-out); }
-.box:focus-visible { background: var(--ink) url("../img/chrome-b.webp") center / cover; color: var(--paper); }
+.box:focus-visible { background: var(--ink); color: var(--paper); }
 .box:focus-visible .box__star { transform: scale(3.2) rotate(180deg); }
-@media (hover: hover) and (pointer: fine) { .box:hover { background: var(--ink) url("../img/chrome-b.webp") center / cover; color: var(--paper); } .box:hover .box__star { transform: scale(3.2) rotate(180deg); } }
+@media (hover: hover) and (pointer: fine) { .box:hover { background: var(--ink); color: var(--paper); } .box:hover .box__star { transform: scale(3.2) rotate(180deg); } }
 
 /* ---------- footer ---------- */
 .ft { background: var(--grey); padding: clamp(28px, 4vw, 56px) var(--edge) 14px; position: relative; overflow: clip; }
@@ -399,7 +385,7 @@ ul { list-style: none; padding: 0; }
 
 /* ---------- reduced motion + no-js: plain render ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .curtain, .grain { display: none; }
+  .curtain { display: none; }
   .hero__video, .hero__pause { display: none; }
   .strip__track { transform: none !important; }
   * { transition-duration: .01ms !important; scroll-behavior: auto !important; }
@@ -467,7 +453,7 @@ ul { list-style: none; padding: 0; }
 .heart:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; background: var(--paper); }
 .pair__a:focus-visible .pair__col, .rack__t:focus-visible .rack__col { opacity: 1; }
 .mega { max-height: calc(100svh - var(--hdr-h) - var(--frame) - 24px); overflow-y: auto; }
-html:not(.has-js) .curtain, html:not(.has-js) .grain,
+html:not(.has-js) .curtain,
 html:not(.has-js) button, html:not(.has-js) .hdr__nav, html:not(.has-js) span.hdr__tool { display: none; }
 html:not(.has-js) .hdr { position: absolute; background: var(--ink); }
 html:not(.has-js) *, html:not(.has-js) *::before, html:not(.has-js) *::after { animation: none !important; }
