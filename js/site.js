@@ -81,8 +81,8 @@
       }
       if (e.key !== 'Escape') return;
       if (root.classList.contains('menu-open')) { setMenu(false); menuBtn && menuBtn.focus(); }
-      if ((dd && dd.contains(document.activeElement)) || (mega && mega.contains(document.activeElement))) ddBtn.focus();
-      closeDd(); closeSearch(true);
+      closeDd(); if (mega && mega.contains(document.activeElement)) ddBtn.focus();
+      closeSearch(true);
     });
 
     /* in-page links. The logo and every #top link must land at the top, with the menu open too. */
@@ -97,68 +97,72 @@
       if (id === '#top' || id === '#main') toTop(); else toEl(target);
     }));
 
-    /* shop menu: the bar under the header. Hover intent on a fine pointer (70ms in, 160ms grace out), click toggles,
-       Esc closes and returns focus, scrolling closes. Pointer open focuses nothing (Safari would draw a ring); a keyboard
-       open (click with detail 0) focuses the first link. */
+    /* the two bars under the header (shop menu, search): the same paper sheet, the same wipe. One open at a time.
+       Hover intent on a fine pointer for the shop menu (70ms in, 160ms grace out), click toggles both, Esc closes and
+       returns focus, scrolling closes. A pointer open of the menu focuses nothing (Safari would draw a ring); a keyboard
+       open focuses the first link. The search always focuses its field: a text field is where the ring belongs. */
+    const hdr = $('#hdr');
+    const bars = [];
+    function makeBar(el, btn, opts) {
+      if (!el || !btn) return null;
+      let hideT = 0;
+      const bar = {
+        el, btn,
+        isOpen: () => el.classList.contains('is-open'),
+        open(viaKeyboard) {
+          clearTimeout(hideT);
+          if (bar.isOpen()) return;
+          bars.forEach((o) => { if (o !== bar) o.close(); });
+          if (root.classList.contains('menu-open')) setMenu(false);
+          el.style.display = 'block'; el.inert = false;
+          void el.offsetHeight; /* the wipe needs a painted closed state first */
+          el.classList.add('is-open'); hdr.classList.add('is-mega');
+          btn.setAttribute('aria-expanded', 'true');
+          if (opts.focus === 'always' || viaKeyboard) { const f = $(opts.first, el); f && f.focus({ preventScroll: true }); }
+        },
+        close(restore) {
+          clearTimeout(hideT);
+          if (!bar.isOpen()) return;
+          const hadFocus = el.contains(document.activeElement);
+          el.classList.remove('is-open');
+          if (!bars.some((o) => o.isOpen())) hdr.classList.remove('is-mega');
+          btn.setAttribute('aria-expanded', 'false');
+          el.inert = true;
+          if (restore || hadFocus) btn.focus({ preventScroll: true });
+          hideT = setTimeout(() => { if (!bar.isOpen()) el.style.display = 'none'; }, 220);
+        },
+      };
+      btn.addEventListener('click', (e) => { bar.isOpen() ? bar.close() : bar.open(e.detail === 0); });
+      el.addEventListener('focusout', (e) => { if (bar.isOpen() && !hdr.contains(e.relatedTarget) && e.relatedTarget) bar.close(); });
+      bars.push(bar);
+      return bar;
+    }
     const dd = $('.dd');
     const ddBtn = $('.dd__btn');
     const mega = $('#mega');
-    const hdr = $('#hdr');
-    let megaT = 0; /* hover intent */
-    let hideT = 0; /* display:none after the close wipe */
-    const megaOpen = () => mega && mega.classList.contains('is-open');
-    function setMega(open, viaKeyboard) {
-      if (!mega) return;
-      clearTimeout(megaT); clearTimeout(hideT);
-      if (open === megaOpen()) return;
-      if (open) {
-        mega.style.display = 'block'; mega.inert = false;
-        void mega.offsetHeight; /* the wipe needs a painted closed state first */
-        mega.classList.add('is-open'); hdr.classList.add('is-mega');
-        ddBtn.setAttribute('aria-expanded', 'true');
-        if (viaKeyboard) { const first = $('a', mega); first && first.focus(); }
-      } else {
-        mega.classList.remove('is-open'); hdr.classList.remove('is-mega');
-        ddBtn.setAttribute('aria-expanded', 'false');
-        mega.inert = true;
-        hideT = setTimeout(() => { if (!megaOpen()) mega.style.display = 'none'; }, 220);
-      }
-    }
-    function closeDd() { setMega(false); }
-    if (dd && mega) {
+    const shopBar = makeBar(mega, ddBtn, { first: 'a', focus: 'keyboard' });
+    if (shopBar && dd) {
+      let megaT = 0;
       const hover = (el) => {
-        el.addEventListener('pointerenter', (e) => { if (fine && e.pointerType === 'mouse') { clearTimeout(megaT); megaT = setTimeout(() => setMega(true, false), 70); } });
+        el.addEventListener('pointerenter', (e) => { if (fine && e.pointerType === 'mouse') { clearTimeout(megaT); megaT = setTimeout(() => shopBar.open(false), 70); } });
         el.addEventListener('pointerleave', (e) => {
           if (!fine || e.pointerType !== 'mouse') return;
           clearTimeout(megaT);
-          megaT = setTimeout(() => { if (!hdr.contains(document.activeElement) || document.activeElement === document.body) setMega(false); }, 160);
+          megaT = setTimeout(() => { if (!mega.contains(document.activeElement)) shopBar.close(); }, 160);
         });
       };
       hover(dd); hover(mega);
-      ddBtn.addEventListener('click', (e) => { clearTimeout(megaT); setMega(!megaOpen(), e.detail === 0); });
-      document.addEventListener('click', (e) => { if (megaOpen() && !hdr.contains(e.target)) setMega(false); });
-      hdr.addEventListener('focusout', (e) => { if (megaOpen() && !hdr.contains(e.relatedTarget)) setMega(false); });
-      addEventListener('scroll', () => { if (megaOpen() && !hdr.contains(document.activeElement)) setMega(false); }, { passive: true });
+      ddBtn.addEventListener('click', () => clearTimeout(megaT));
     }
-
-    /* search */
     const search = $('#search');
     const input = $('#q');
     const searchBtn = $('[data-search-open]');
-    function closeSearch(restore = false) {
-      if (search && !search.hidden) {
-        const hadFocus = search.contains(document.activeElement);
-        search.hidden = true; searchBtn.setAttribute('aria-expanded', 'false');
-        if (restore || hadFocus) searchBtn.focus({ preventScroll: true });
-      }
-    }
-    $$('[data-search-open]').forEach((b) => b.addEventListener('click', () => {
-      if (root.classList.contains('menu-open')) setMenu(false);
-      search.hidden = !search.hidden;
-      b.setAttribute('aria-expanded', String(!search.hidden));
-      if (!search.hidden) input.focus();
-    }));
+    const searchBar = makeBar(search, searchBtn, { first: '#q', focus: 'always' });
+    function closeDd() { shopBar && shopBar.close(); }
+    function closeSearch(restore = false) { searchBar && searchBar.close(restore); }
     $$('[data-search-close]').forEach((b) => b.addEventListener('click', () => closeSearch(true)));
+    document.addEventListener('click', (e) => { if (!hdr.contains(e.target)) bars.forEach((b) => b.close()); });
+    addEventListener('scroll', () => { bars.forEach((b) => { if (b.isOpen() && !hdr.contains(document.activeElement)) b.close(); }); }, { passive: true });
 
     /* wishlist (local only) */
     const KEY = 'sp-wish';

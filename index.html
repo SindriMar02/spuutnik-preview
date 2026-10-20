@@ -384,11 +384,37 @@ M12302 11641 c-164 -48 -400 -276 -492 -474 -50 -106 -75 -236 -50 -252 6 -4
     </div>
   </div>
 
-  <form class="search" id="search" role="search" action="https://spuutnikreykjavik.com/search" method="get" target="_blank" hidden>
-    <label class="t-lab" for="q">Leita í verslun</label>
-    <input id="q" name="q" type="search" autocomplete="off" placeholder="t.d. leðurjakki…">
-    <button class="search__go t-lab" type="submit">Leita</button>
-    <button class="search__x" type="button" data-search-close aria-label="Loka leit"><svg class="ico" aria-hidden="true"><use href="img/icons.svg#i-x-light"/></svg></button>
+  <!-- search: the same paper bar as the shop menu, the same wipe; Enter searches the real store -->
+  <form class="mega mega--search" id="search" role="search" action="https://spuutnikreykjavik.com/search" method="get" target="_blank" tabindex="-1" inert>
+    <div class="mega__in wrap">
+      <div class="mega__col mega__col--q" style="--i:0">
+        <label class="mega__h t-lab" for="q">[ Leita í verslun ]</label>
+        <div class="q">
+          <input id="q" name="q" type="search" autocomplete="off" placeholder="t.d. leðurjakki" enterkeyhint="search">
+          <button class="q__go" type="submit" aria-label="Leita"><svg class="ico" aria-hidden="true"><use href="img/icons.svg#i-arrow-right-light"/></svg></button>
+        </div>
+        <p class="mega__hint t-lab">Enter leitar í netverslun Spúútnik</p>
+      </div>
+      <div class="mega__col" style="--i:1">
+        <p class="mega__h t-lab">[ Vinsælt ]</p>
+        <ul class="mega__cats mega__cats--one">
+          <li><a href="https://spuutnikreykjavik.com/collections/nyjar-vorur-13-sept" target="_blank" rel="noopener">Nýtt í vikunni</a></li>
+          <li><a href="https://spuutnikreykjavik.com/collections/animal-jakkar" target="_blank" rel="noopener">Jakkar</a></li>
+          <li><a href="https://spuutnikreykjavik.com/collections/bomber-jakkar" target="_blank" rel="noopener">Bomber jakkar</a></li>
+          <li><a href="https://spuutnikreykjavik.com/collections/toskur" target="_blank" rel="noopener">Töskur</a></li>
+          <li><a href="https://spuutnikreykjavik.com/collections/pils" target="_blank" rel="noopener">Pils &amp; kjólar</a></li>
+        </ul>
+      </div>
+      <div class="mega__col" style="--i:2">
+        <p class="mega__h t-lab">[ Flýtileiðir ]</p>
+        <ul class="mega__cats mega__cats--one">
+          <li><a href="https://spuutnikreykjavik.com/products/in-store-giftcard" target="_blank" rel="noopener">Gjafakort í búð</a></li>
+          <li><a href="#shops">Verslanir og símar</a></li>
+          <li><a href="#about">Um okkur</a></li>
+        </ul>
+        <button class="mega__close t-lab" type="button" data-search-close>[ Loka ]</button>
+      </div>
+    </div>
   </form>
 </header>
 

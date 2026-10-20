@@ -164,13 +164,27 @@ ul { list-style: none; padding: 0; }
 }
 
 
-.search { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px var(--pad) 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--ink); box-shadow: 0 1px 0 var(--ink); }
-.search[hidden] { display: none; }
-.search label { grid-column: 1 / -1; }
-.search input::placeholder { color: #55544f; opacity: 1; }
-.search input { min-width: 0; width: 100%; height: 44px; padding: 0 12px; font: 400 16px var(--f-text); color: var(--ink); background: #fff; border: 1px solid var(--ink); border-radius: 0; }
-.search__go { height: 44px; padding: 0 18px; background: var(--ink); color: var(--paper); }
-.search__x { width: 44px; height: 44px; display: grid; place-items: center; }
+/* search: the same bar. The field is one big ruled line, the arrow submits; popular categories and shortcuts beside it */
+.mega--search .mega__in { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr); }
+.q { display: flex; align-items: center; border-bottom: 1px solid var(--ink); }
+.q input { flex: 1; min-width: 0; height: 60px; padding: 0; font: 400 clamp(22px, 2.6vw, 34px)/1 var(--f-text); color: var(--ink); background: none; border: 0; border-radius: 0; outline-offset: 6px; }
+.q input::placeholder { color: var(--mid); opacity: 1; }
+/* focus on the field is the rule itself thickening (plus the caret), not a box around a ruled line */
+.q input:focus-visible { outline: 0; }
+.q:focus-within { box-shadow: 0 1px 0 var(--ink); }
+.q input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.q__go { width: 56px; height: 56px; display: grid; place-items: center; flex: none; transition: transform .16s ease-out; }
+.q__go .ico { width: 26px; height: 26px; }
+.q__go:active { transform: scale(.94); }
+@media (hover: hover) and (pointer: fine) { .q__go:hover { transform: translate3d(4px, 0, 0); } }
+.mega__hint { margin-top: 10px; color: var(--mid); }
+.mega__cats--one { columns: 1; }
+.mega__close { display: inline-flex; align-items: center; min-height: 34px; margin-top: 14px; color: var(--mid); }
+@media (hover: hover) and (pointer: fine) { .mega__close:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
+@media (max-width: 759px) {
+  .mega--search .mega__in { grid-template-columns: 1fr; gap: 18px; padding-top: 14px; padding-bottom: 22px; }
+  .mega--search .mega__col:nth-child(3) { display: none; } /* phones: field + popular; the drawer has the rest */
+}
 
 /* ---------- mobile menu ---------- */
 .menu { position: fixed; inset: 0; z-index: var(--z-menu); display: flex; flex-direction: column; justify-content: space-between; padding: calc(96px + var(--safe-top)) var(--pad) calc(28px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--paper); overflow-y: auto; overscroll-behavior: contain; }
