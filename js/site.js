@@ -1,3 +1,14 @@
+/* focus-guard (_tools/focus-guard): no focus ring after a tap or click; the README says why */
+(function () {
+  var root = document.documentElement;
+  function set(v) { if (root.getAttribute('data-input') !== v) root.setAttribute('data-input', v); }
+  addEventListener('pointerdown', function () { set('pointer'); }, true);
+  addEventListener('keydown', function (e) {
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+    set('key');
+  }, true);
+})();
+
 /* Spúútnik Reykjavík test prototype. Motion identity: ink and shutter (see ../DESIGN.md section 6).
    Everything here is split in two: ui() always runs, motion() only runs when the visitor has not asked
    for reduced motion and GSAP loaded. If motion() throws, the page falls back to the plain render. */
@@ -70,7 +81,7 @@
       }
       if (e.key !== 'Escape') return;
       if (root.classList.contains('menu-open')) { setMenu(false); menuBtn && menuBtn.focus(); }
-      if (dd && dd.contains(document.activeElement)) ddBtn.focus();
+      if ((dd && dd.contains(document.activeElement)) || (mega && mega.contains(document.activeElement))) ddBtn.focus();
       closeDd(); closeSearch(true);
     });
 
@@ -86,19 +97,48 @@
       if (id === '#top' || id === '#main') toTop(); else toEl(target);
     }));
 
-    /* shop dropdown */
+    /* shop menu: the bar under the header. Hover intent on a fine pointer (70ms in, 160ms grace out), click toggles,
+       Esc closes and returns focus, scrolling closes. Pointer open focuses nothing (Safari would draw a ring); a keyboard
+       open (click with detail 0) focuses the first link. */
     const dd = $('.dd');
     const ddBtn = $('.dd__btn');
-    function closeDd() { if (!dd) return; dd.dataset.open = 'false'; ddBtn.setAttribute('aria-expanded', 'false'); }
-    if (dd) {
-      dd.addEventListener('pointerenter', () => { if (fine) { dd.dataset.open = 'true'; ddBtn.setAttribute('aria-expanded', 'true'); } });
-      dd.addEventListener('pointerleave', () => { if (!dd.contains(document.activeElement)) closeDd(); });
-      ddBtn.addEventListener('click', () => {
-        const open = dd.dataset.open !== 'true';
-        dd.dataset.open = String(open); ddBtn.setAttribute('aria-expanded', String(open));
-      });
-      document.addEventListener('click', (e) => { if (!dd.contains(e.target)) closeDd(); });
-      dd.addEventListener('focusout', (e) => { if (!dd.contains(e.relatedTarget)) closeDd(); });
+    const mega = $('#mega');
+    const hdr = $('#hdr');
+    let megaT = 0; /* hover intent */
+    let hideT = 0; /* display:none after the close wipe */
+    const megaOpen = () => mega && mega.classList.contains('is-open');
+    function setMega(open, viaKeyboard) {
+      if (!mega) return;
+      clearTimeout(megaT); clearTimeout(hideT);
+      if (open === megaOpen()) return;
+      if (open) {
+        mega.style.display = 'block'; mega.inert = false;
+        void mega.offsetHeight; /* the wipe needs a painted closed state first */
+        mega.classList.add('is-open'); hdr.classList.add('is-mega');
+        ddBtn.setAttribute('aria-expanded', 'true');
+        if (viaKeyboard) { const first = $('a', mega); first && first.focus(); }
+      } else {
+        mega.classList.remove('is-open'); hdr.classList.remove('is-mega');
+        ddBtn.setAttribute('aria-expanded', 'false');
+        mega.inert = true;
+        hideT = setTimeout(() => { if (!megaOpen()) mega.style.display = 'none'; }, 220);
+      }
+    }
+    function closeDd() { setMega(false); }
+    if (dd && mega) {
+      const hover = (el) => {
+        el.addEventListener('pointerenter', (e) => { if (fine && e.pointerType === 'mouse') { clearTimeout(megaT); megaT = setTimeout(() => setMega(true, false), 70); } });
+        el.addEventListener('pointerleave', (e) => {
+          if (!fine || e.pointerType !== 'mouse') return;
+          clearTimeout(megaT);
+          megaT = setTimeout(() => { if (!hdr.contains(document.activeElement) || document.activeElement === document.body) setMega(false); }, 160);
+        });
+      };
+      hover(dd); hover(mega);
+      ddBtn.addEventListener('click', (e) => { clearTimeout(megaT); setMega(!megaOpen(), e.detail === 0); });
+      document.addEventListener('click', (e) => { if (megaOpen() && !hdr.contains(e.target)) setMega(false); });
+      hdr.addEventListener('focusout', (e) => { if (megaOpen() && !hdr.contains(e.relatedTarget)) setMega(false); });
+      addEventListener('scroll', () => { if (megaOpen() && !hdr.contains(document.activeElement)) setMega(false); }, { passive: true });
     }
 
     /* search */
@@ -263,7 +303,9 @@
     const lens = data.chunks.map((c) => c.len);
     const paths = data.chunks.map((c) => {
       const pth = mk('path', { d: c.d, 'stroke-width': c.w }, strokes);
-      pth.style.strokeDasharray = c.len;
+      /* gap longer than the chunk plus a cap: with gap == len the NEXT dash starts exactly at the chunk's end and its
+         round cap paints a dot there before the pen has arrived (a dotted ghost of the whole word) */
+      pth.style.strokeDasharray = `${c.len} ${c.len + c.w + 8}`;
       pth.style.strokeDashoffset = c.len;
       return pth;
     });
@@ -297,11 +339,25 @@
     lens.forEach((l) => { cum.push(total); total += l; });
     const last = paths[paths.length - 1];
     const lastPt = last.getPointAtLength(last.getTotalLength());
-    let head = 0;
     const ease = (t) => t * t * (3 - 2 * t);
-    function set(p) {
-      p = Math.max(0, Math.min(1, p));
-      const drawn = p * total;
+    /* The pen writes stroke by stroke (data.strokes = index ranges in writing order). Between two strokes it LIFTS: the
+       star travels the gap on a shallow arc in a time proportional to the distance, instead of teleporting. The
+       schedule below maps progress 0..1 onto [draw S][lift][draw p][lift]... in ink length units. */
+    const order = (data.strokes && data.strokes.length ? data.strokes : [{ from: 0, to: paths.length }]).filter((s) => s.to > s.from);
+    const sched = []; let span = 0;
+    order.forEach((s, i) => {
+      const len = cum[s.to - 1] + lens[s.to - 1] - cum[s.from];
+      sched.push({ kind: 'draw', s, at: span, len }); span += len;
+      if (i < order.length - 1) {
+        const a = paths[s.to - 1].getPointAtLength(paths[s.to - 1].getTotalLength());
+        const n = order[i + 1]; const b = paths[n.from].getPointAtLength(0);
+        const d = Math.hypot(b.x - a.x, b.y - a.y);
+        const lift = Math.min(d * 0.55, 420);
+        sched.push({ kind: 'lift', a, b, at: span, len: lift, ink: cum[s.to - 1] + lens[s.to - 1] }); span += lift;
+      }
+    });
+    let head = 0;
+    function fill(drawn) { /* drawn = ink length already on the page, over the flat chunk list */
       let lo = 0; let hi = cum.length - 1;
       while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (cum[mid] <= drawn) lo = mid; else hi = mid - 1; }
       for (let i = Math.max(0, Math.min(head, lo) - 1); i <= Math.min(paths.length - 1, Math.max(head, lo) + 1); i++) {
@@ -309,16 +365,34 @@
         paths[i].style.strokeDashoffset = lens[i] * (1 - local);
       }
       head = lo;
-      if (p <= 0) { star.setAttribute('opacity', 0); return; }
       const f = Math.max(0, Math.min(1, (drawn - cum[lo]) / lens[lo]));
-      const pt = paths[lo].getPointAtLength(f * paths[lo].getTotalLength());
-      let cx = pt.x; let cy = pt.y; let w = 170;
-      const END = 0.955;
+      return paths[lo].getPointAtLength(f * paths[lo].getTotalLength());
+    }
+    const END = 0.955; /* the writing fits in [0, END]; after that everything is drawn and the star flies home */
+    function set(p) {
+      p = Math.max(0, Math.min(1, p));
+      const t = Math.min(p, END) / END * span;
+      let k = 0;
+      while (k < sched.length - 1 && sched[k + 1].at <= t) k++;
+      const seg = sched[k];
+      let cx; let cy;
+      if (seg.kind === 'draw') {
+        const local = seg.len ? Math.min(1, (t - seg.at) / seg.len) : 1;
+        const pt = fill(cum[seg.s.from] + local * seg.len);
+        cx = pt.x; cy = pt.y;
+      } else {
+        const u = ease(Math.min(1, (t - seg.at) / seg.len));
+        fill(seg.ink); /* the finished stroke stays full while the pen is in the air */
+        cx = seg.a.x + (seg.b.x - seg.a.x) * u;
+        cy = seg.a.y + (seg.b.y - seg.a.y) * u - Math.sin(u * Math.PI) * Math.min(60, seg.len * 0.25); /* the lift */
+      }
+      if (p <= 0) { star.setAttribute('opacity', 0); return; }
+      let w = 170;
       if (p > END) { /* the pen lifts and the star settles into its place above the k */
-        const t = ease((p - END) / (1 - END));
-        cx = lastPt.x + (STAR_END.x + STAR_END.w / 2 - lastPt.x) * t;
-        cy = lastPt.y + (STAR_END.y + STAR_END.h / 2 - lastPt.y) * t;
-        w = 170 + (STAR_END.w - 170) * t;
+        const u = ease((p - END) / (1 - END));
+        cx = lastPt.x + (STAR_END.x + STAR_END.w / 2 - lastPt.x) * u;
+        cy = lastPt.y + (STAR_END.y + STAR_END.h / 2 - lastPt.y) * u;
+        w = 170 + (STAR_END.w - 170) * u;
       }
       const h = w * 0.543;
       star.setAttribute('x', cx - w / 2); star.setAttribute('y', cy - h / 2);
@@ -372,10 +446,12 @@
     const penHero = mountPen(heroSig, 'chrome');
     const wr = { p: 0 };
     const tl = gsap.timeline({ delay: 1.3, defaults: { ease: 'expo.out' } });
-    if (penHero) heroEntrance = gsap.to(wr, { delay: 1.3, p: 1, duration: 3.4, ease: 'power1.inOut', onUpdate: () => penHero.set(wr.p) });
+    if (penHero) heroEntrance = gsap.to(wr, { delay: 1.3, p: 1, duration: 3.8, ease: 'power1.inOut', onUpdate: () => penHero.set(wr.p) });
     tl.fromTo('.hero__fig img', { yPercent: 14, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.6, stagger: 0.22 }, 0.7)
       .fromTo('.hero__lab span', { yPercent: 120, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, stagger: 0.08 }, 1.2)
-      .fromTo('.hdr__in > *', { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, stagger: 0.06 }, 1.1);
+      .fromTo('.hdr__in > *', { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, stagger: 0.06 }, 1.1)
+      /* the one invitation: after the star has landed (pen = 1.3s delay + 3.8s), under the right label */
+      .fromTo('.hero__new', { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9 }, 5.3);
 
     /* the highlight slides through the chrome: slowly on its own, and further as you scroll.
        Once the pen has finished it is a transform on a plain layer (see mountPen). Until then, and without CSS mask support, it is an SVG
@@ -455,12 +531,16 @@
       gsap.fromTo($$('.ln > span', h), { yPercent: 115 }, { yPercent: 0, ease: 'none', stagger: 0.14, scrollTrigger: { trigger: h, start: 'top 94%', end: cl('top 66%'), scrub: 0.5 } });
     });
 
-    /* other signatures (footer): the same pen, ink instead of chrome, written as you scroll to it */
+    /* other signatures (footer): the same pen, ink instead of chrome. A pen writes at its own pace, so this one plays
+       once the signature is well inside the viewport (2.6s) and un-writes when you scroll back above it, instead of
+       being dragged by the scrollbar. */
     $$('[data-pen="ink"]').forEach((host) => {
       const pen = mountPen(host, 'ink');
       if (!pen) return;
       const w = { p: 0 };
-      gsap.fromTo(w, { p: 0 }, { p: 1, ease: 'none', scrollTrigger: { trigger: host, start: 'top 90%', end: cl('top 38%'), scrub: 0.6 }, onUpdate: () => pen.set(w.p) });
+      const write = gsap.to(w, { p: 1, duration: 2.6, ease: 'power1.inOut', paused: true, onUpdate: () => pen.set(w.p) });
+      /* un-writing is a system response, so it runs at twice the speed of the write */
+      ScrollTrigger.create({ trigger: host, start: 'top 82%', onEnter: () => write.timeScale(1).play(), onLeaveBack: () => write.timeScale(2).reverse() });
     });
 
     /* NEW: the two outlined lines fill in order */

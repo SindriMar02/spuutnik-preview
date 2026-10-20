@@ -129,15 +129,50 @@ ul { list-style: none; padding: 0; }
 .dd__btn { min-height: 44px; font: inherit; letter-spacing: inherit; text-transform: inherit; }
 .dd__btn::after { content: ""; display: inline-block; width: 5px; height: 5px; margin-left: 8px; border: solid currentColor; border-width: 0 1px 1px 0; transform: translateY(-2px) rotate(45deg); transition: transform .3s var(--ease-out); }
 .dd__btn[aria-expanded="true"]::after { transform: translateY(1px) rotate(225deg); }
-.dd__list {
-  position: absolute; left: calc(-1 * var(--pad)); top: 100%; min-width: 220px; padding: 10px var(--pad) 14px;
-  background: var(--paper); color: var(--ink); box-shadow: 0 0 0 1px var(--ink);
-  visibility: hidden; opacity: 0; transform: translate3d(0, -6px, 0);
-  transition: opacity .25s ease, transform .35s var(--ease-out), visibility 0s linear .25s;
+/* shop menu: one full-width bar hanging from the header. Opens as a clip-path wipe from the header line (260ms), the three
+   columns settle in after it (40ms apart); closes faster (160ms) with no stagger. The header turns paper while it is open so
+   bar and header read as one sheet. Pointer open focuses nothing; keyboard open focuses the first link (js). */
+.mega {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: -1; display: none;
+  background: var(--paper); color: var(--ink); box-shadow: 0 1px 0 var(--ink);
+  visibility: hidden; clip-path: inset(0 0 100% 0);
+  transition: clip-path .16s var(--ease-out), visibility 0s linear .16s;
 }
-.dd__list a { display: block; padding: 7px 0; }
-@media (hover: hover) and (pointer: fine) { .dd__list a:hover { text-decoration: underline; text-underline-offset: 3px; } }
-.dd[data-open="true"] .dd__list { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
+.mega.is-open { visibility: visible; clip-path: inset(0 0 0 0); transition: clip-path .26s var(--ease-out), visibility 0s; }
+.mega__in { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) minmax(0, 1fr); gap: 0 clamp(24px, 4vw, 72px); padding-top: 22px; padding-bottom: 28px; }
+.mega__col { min-width: 0; opacity: 0; transform: translate3d(0, 10px, 0); transition: opacity .12s ease, transform .12s ease; }
+.mega.is-open .mega__col { opacity: 1; transform: none; transition: opacity .26s var(--ease-out), transform .3s var(--ease-out); transition-delay: calc(var(--i, 0) * 45ms + 60ms); }
+.mega__h { margin-bottom: 10px; color: var(--mid); }
+.mega__h + .mega__h, .mega__shops + .mega__h { margin-top: 18px; }
+.mega__cats { columns: 2; column-gap: clamp(16px, 2vw, 32px); font: 500 15px/1.2 var(--f-text); }
+.mega__cats li { break-inside: avoid; }
+.mega__cats a, .mega__shops a { display: inline-flex; align-items: center; min-height: 34px; }
+.mega__all { font-weight: 700; }
+.mega__all::after { content: " →"; }
+.mega__picks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
+.mega__pick { display: grid; gap: 4px; }
+.mega__pick-img { position: relative; display: block; aspect-ratio: 3 / 4; background: #fff; border-bottom: 1px solid var(--ink); overflow: hidden; }
+.mega__pick-img img { position: absolute; left: 50%; bottom: 0; height: 92%; width: auto; max-width: none; transform: translate3d(-50%, 0, 0); transition: transform .55s var(--ease-out); }
+.mega__pick-t { font: 400 13px/1.3 var(--f-text); margin-top: 6px; }
+.mega__pick-p { font: 700 11px/1.3 var(--f-mono); font-variant-numeric: tabular-nums; }
+.mega__shops li { display: grid; gap: 2px; padding: 4px 0; }
+.mega__shops a { font: 500 15px/1.2 var(--f-text); }
+.mega__shops .t-lab { color: var(--mid); }
+.mega__foot { display: flex; align-items: center; gap: 8px; margin-top: 26px; color: var(--mid); }
+.mega__star { width: 18px; height: auto; aspect-ratio: 700 / 380; fill: currentColor; flex: none; }
+@media (hover: hover) and (pointer: fine) {
+  .mega__cats a:hover, .mega__shops a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .mega__pick:hover .mega__pick-img img { transform: translate3d(-50%, -6px, 0); }
+  .mega__pick:hover .mega__pick-t { text-decoration: underline; text-underline-offset: 3px; }
+}
+.hdr.is-mega { background: var(--paper); color: var(--ink); box-shadow: 0 1px 0 var(--ink); }
+.hdr.is-mega.is-hidden { transform: translate3d(-50%, 0, 0); }
+@media (max-width: 1099px) { .mega__in { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .mega__col--new { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .mega, .mega.is-open { clip-path: none; transition: opacity .2s ease, visibility 0s; opacity: 0; }
+  .mega.is-open { opacity: 1; }
+  .mega__col, .mega.is-open .mega__col { transform: none; transition-delay: 0s; }
+}
 
 
 .search { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px var(--pad) 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--ink); box-shadow: 0 1px 0 var(--ink); }
@@ -180,6 +215,9 @@ ul { list-style: none; padding: 0; }
 .hero__lab--l { left: var(--edge); }
 .hero__lab--r { right: var(--edge); text-align: right; }
 .js:not(.ready) .hero__lab span { opacity: 0; }
+/* the one invitation on the landing page: appears after the star has landed (js), never before */
+.hero__new { display: inline-flex; align-items: center; min-height: 32px; margin-top: 6px; padding: 0 2px; }
+@media (hover: hover) and (pointer: fine) { .hero__new:hover { text-decoration: underline; text-underline-offset: 4px; } }
 .hero__pause { position: absolute; left: 50%; bottom: clamp(4px, 1.4vw, 20px); translate: -50% 0; z-index: 4; width: 44px; height: 44px; display: grid; place-items: center; color: var(--paper); transition: opacity .2s ease, transform .16s ease-out; }
 .hero__pause:active { transform: scale(.94); }
 @media (hover: hover) and (pointer: fine) { .hero__pause:hover { opacity: .7; } }
@@ -398,6 +436,7 @@ ul { list-style: none; padding: 0; }
   .rack__row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); overflow: visible; }
   .rack__t { flex: none; align-self: stretch; }
   .shops__grid { grid-template-columns: repeat(4, 1fr); }
+  .box { aspect-ratio: 1 / .78; } /* four across: a square left two thirds of each box empty */
   .ft__cols { grid-template-columns: 1fr 1fr 1.3fr; }
   .ft__r { grid-column: auto; text-align: right; }
 }
@@ -427,7 +466,7 @@ ul { list-style: none; padding: 0; }
 :where(.card__media, .st__media, .rack__t, .pair__a, .pair__b):focus-visible::after { content: ""; position: absolute; inset: 2px; border: 2px solid var(--ink); pointer-events: none; z-index: 5; }
 .heart:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; background: var(--paper); }
 .pair__a:focus-visible .pair__col, .rack__t:focus-visible .rack__col { opacity: 1; }
-.dd__list { max-height: calc(100svh - var(--hdr-h) - var(--frame) - 24px); overflow-y: auto; }
+.mega { max-height: calc(100svh - var(--hdr-h) - var(--frame) - 24px); overflow-y: auto; }
 html:not(.has-js) .curtain, html:not(.has-js) .grain,
 html:not(.has-js) button, html:not(.has-js) .hdr__nav, html:not(.has-js) span.hdr__tool { display: none; }
 html:not(.has-js) .hdr { position: absolute; background: var(--ink); }
@@ -438,3 +477,10 @@ html:not(.has-js) .hdr__logo { grid-column: 2; }
 
 /* Lenis also reads native scroll padding; apply the anchor offset exactly once. */
 :where(main, section)[tabindex="-1"] { scroll-margin-top: 0; }
+
+/* focus-guard (_tools/focus-guard) */
+/* focus-guard.css: pairs with focus-guard.js. No ring after a tap or a click; every ring for the keyboard.
+   Text fields keep theirs (the user is typing there whatever opened it). */
+html[data-input="pointer"] :focus-visible:not(input):not(textarea):not(select):not([contenteditable="true"]) { outline: none; }
+/* a focus target that is only a container (a menu panel, a dialog, a drawer): never ring it */
+[tabindex="-1"]:focus { outline: none; }
